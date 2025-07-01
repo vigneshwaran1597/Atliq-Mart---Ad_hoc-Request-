@@ -1,0 +1,88 @@
+Ad-Hoc Request
+
+1. SELECT event_id, product_code, base_price, promo_type 
+FROM fact_events
+where base_price>500 and 
+promo_type = "BOGOF"
+
+2. SELECT City, count(*) as numbers FROM dim_stores
+group by city 
+order by numbers DESC
+
+3. with cte1 as (SELECT campaign_id, 
+Round(sum(`quantity_sold(after_promo)`*0.67*base_price)/1000000,2) as after_promo_1
+FROM fact_events
+where promo_type="33% OFF"
+group by campaign_id),
+
+cte2 as (SELECT campaign_id, 
+Round(sum(`quantity_sold(after_promo)`*0.50*base_price)/1000000,2) as after_promo_2
+FROM fact_events
+where promo_type="50% OFF"
+group by campaign_id),
+
+cte3 as (SELECT campaign_id, 
+Round(sum(`quantity_sold(after_promo)`*0.75*base_price)/1000000,2) as after_promo_3
+FROM fact_events
+where promo_type="25% OFF"
+group by campaign_id),
+
+cte4 as (SELECT campaign_id, 
+Round(sum(2*`quantity_sold(after_promo)`*base_price*0.5)/1000000,2) as after_promo_4
+FROM fact_events
+where promo_type="BOGOF"
+group by campaign_id),
+
+cte5 as (SELECT campaign_id, 
+Round(sum(base_price*`quantity_sold(after_promo)`-500*`quantity_sold(after_promo)`)/1000000,2) as after_promo_5
+FROM fact_events
+where promo_type="500 Cashback"
+group by campaign_id)
+
+select a.campaign_id, 
+Round(a.after_promo_1+b.after_promo_2+c.after_promo_3+
+d.after_promo_4+e.after_promo_5,2) 
+as total_after_promo_revenue_million 
+from cte1 a
+Join cte2 b
+on a.campaign_id=b.campaign_id
+Join cte3 c
+on a.campaign_id=c.campaign_id
+Join cte4 d
+on a.campaign_id=d.campaign_id
+Join cte5 e
+on a.campaign_id=e.campaign_id
+group by a.campaign_id;
+
+4. with cte1 as (SELECT category,
+Round(sum((case when promo_type="BOGOF" then `quantity_sold(after_promo)`*2 else `quantity_sold(after_promo)`end
+- `quantity_sold(before_promo)`) *100)/sum(`quantity_sold(before_promo)`),2) as `ISU%`
+FROM fact_events 
+join dim_products using (product_code)
+Join dim_campaigns using (campaign_id)
+where campaign_name= "Diwali"
+group by category)
+
+select 
+category, `ISU%`, row_number() over(order by `ISU%` desc)
+as rank_order from Cte1
+
+5. with cte1 as (select product_name, category,
+Round((
+sum(
+case
+when promo_type="BOGOF" then (2*`quantity_sold(after_promo)`*base_price*0.5)
+when promo_type="33% OFF" then (`quantity_sold(after_promo)`*0.67*base_price)
+when promo_type="50% OFF" then (`quantity_sold(after_promo)`*0.50*base_price)
+when promo_type="25% OFF" then (`quantity_sold(after_promo)`*0.75*base_price)
+when promo_type="500 Cashback" then (base_price*`quantity_sold(after_promo)`-500*`quantity_sold(after_promo)`)
+else 0
+end) - sum(`quantity_sold(before_promo)`*base_price)) * 100/ sum(`quantity_sold(before_promo)`*base_price),2) as `IRU%`
+from fact_events f
+join dim_products p
+on f.product_code=p.product_code
+group by p.product_name, p.category)
+
+select * from cte1
+order by `IRU%` DESC
+limit 5
